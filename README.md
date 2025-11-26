@@ -13,3 +13,11 @@ Mike Ryu
                                   4. Record notes about what happened in a particular meeting or small group<br>
                                   5. See who is currently checked in to an event in “real time”<br><br>
 **What is your team name?**:<br><br> Our team name is Serkan&Grace. Our team includes Serkan Durna and Grace Yishak. <br><br>
+
+**How to spin up our server?**:<br><br> Run Commands: <br><br>
+                                        1. docker start mysql-cs125 <br>
+                                        2. docker exec -i mysql-cs125 mysql -u root -pcs125 < schema.sql <br>
+                                        3. docker exec -i mysql-cs125 mysql -u root -pcs125 < data.sql <br>
+                                        4. python app.py <br>
+
+     
