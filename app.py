@@ -1,4 +1,3 @@
-from tkinter import EventType
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field as PydanticField
 from bson import ObjectId
@@ -6,6 +5,8 @@ import mysql.connector
 from fastapi import FastAPI, HTTPException
 from database import get_db_connection, get_mongo_db, get_redis_conn, close_connections, get_mysql_pool, get_mongo_client, get_redis_client
 import redis
+
+
 DB_USER="root"
 DB_PASSWORD="cs125"
 DB_HOST="127.0.0.1"
@@ -31,7 +32,9 @@ def get_all_students():
     Retrieves a list of all students.
     """
     try:
+
         cnx = get_db_connection()
+
         cursor = cnx.cursor(dictionary=True)
         cursor.execute("SELECT id, guardianID, firstName, lastName FROM Student")
         students = cursor.fetchall()
@@ -49,13 +52,17 @@ def get_student_by_id(student_id: int):
     Retrieves a specific customer by their ID.
     """
     try:
+
         cnx = get_db_connection()
         cursor = cnx.cursor(dictionary=True)
+
         query = "SELECT id, guardianID, firstName, lastName FROM Student WHERE id = %s;"
         cursor.execute(query, (student_id,))
         student = cursor.fetchone()
         if not student:
+
             raise HTTPException(status_code=404, detail="Student not found")
+
         return student
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
@@ -63,6 +70,7 @@ def get_student_by_id(student_id: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 
 # --- Pydantic Models for MongoDB Data ---
@@ -172,3 +180,4 @@ def checkIn_event(check_in: checkInEvent):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app)
+
