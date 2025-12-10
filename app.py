@@ -8,6 +8,9 @@ import redis
 from fastapi.responses import FileResponse
 import os
 from contextlib import asynccontextmanager
+from extra_routes import router as extra_router
+from graphql_api import graphql_app
+
 
 # --- App Lifecycle Management ---
 @asynccontextmanager
@@ -40,6 +43,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(extra_router)
+app.include_router(graphql_app, prefix="/graphql")
 
 @app.get("/students")
 def get_all_students():
@@ -190,6 +195,12 @@ def checkIn_event(check_in: checkInEvent):
     finally:
         if 'cursor' in locals():
             cursor.close()
+
+@app.get("/debug/redis/{event_id}")
+def debug_redis(event_id: int):
+    r = get_redis_conn()
+    key = f"event {event_id}:checkIn"
+    return {"key": key, "members": list(r.smembers(key))}
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ DB_PORT=3399
 DB_NAME = os.getenv("DB_NAME", "youth_db")
 
 # --- MongoDB Configuration ---
-MONGO_URI = "mongodb+srv://gyishak_db_user:QRexsPegScsmDJZq@cluster0.tsmk7o0.mongodb.net/?appName=Cluster0"
+MONGO_URI = load_secret("mongo_uri")
 MONGO_DB_NAME = "youth_ministry"
 
 # --- Redis Configuration ---

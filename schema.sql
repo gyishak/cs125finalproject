@@ -5,13 +5,13 @@ USE youth_db;
 CREATE TABLE EVENT_TYPE(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(60)
-)
+);
 
 CREATE TABLE Event(
     ID INT AUTO_INCREMENT PRIMARY KEY,
-    event_typeID INT,
     Type VARCHAR(60),
     Notes TEXT,
+    event_typeID INT,
     FOREIGN KEY (event_typeID) REFERENCES EVENT_TYPE(ID)
 );
 
@@ -31,11 +31,13 @@ CREATE TABLE AGroup(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(60)
 );
+
 CREATE TABLE Guardian(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     firstName VARCHAR(60),
     lastName VARCHAR(60)
 );
+
 CREATE TABLE Student(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     guardianID INT,
@@ -53,7 +55,6 @@ CREATE TABLE GroupMember(
     FOREIGN KEY (groupID) REFERENCES AGroup(ID),
     FOREIGN KEY (studentID) REFERENCES Student(ID)
 );
-
 
 CREATE TABLE EventLeader(
     ID INT AUTO_INCREMENT PRIMARY KEY,
@@ -86,6 +87,13 @@ CREATE TABLE GroupLeader(
     FOREIGN KEY (groupID) REFERENCES AGroup(ID)
 );
 
-
-
+CREATE TABLE AttendanceStudent(
+    ID INT AUTO_INCREMENT PRIMARY KEY,
+    eventID INT,
+    studentID INT,
+    theDATE DATE,
+    theTime TIME,
+    FOREIGN KEY (eventID) REFERENCES Event(ID),
+    FOREIGN KEY (studentID) REFERENCES Student(ID)
+);
 
