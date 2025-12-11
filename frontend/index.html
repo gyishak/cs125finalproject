@@ -2,17 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Youth Group Leader Dashboard</title>
-
-    <!-- Load CSS styling -->
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
-
   <body>
-    <!-- Main app container (styled by CSS) -->
-    <div id="app" class="app-container">Loading dashboard…</div>
+    <div class="page">
+      <header class="page-header">
+        <div>
+          <div class="page-badge">🕊️ Leader View</div>
+          <h1 class="page-title">Youth Group Management System</h1>
+          <p class="page-subtitle" id="welcome-message">
+            Manage events, track attendance, and coordinate your ministry
+          </p>
+        </div>
+        <nav class="page-nav">
+          <a href="student.html" class="nav-link">Student Portal →</a>
+          <button
+            id="logout-btn"
+            class="nav-link"
+            style="border: none; cursor: pointer"
+          >
+            Logout
+          </button>
+        </nav>
+      </header>
 
-    <!-- Load frontend logic -->
+      <div id="app">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
     <script src="app.js"></script>
   </body>
 </html>

@@ -2,11 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Student / Parent View</title>
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Youth Group Student View</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="app" class="app-container">Loading student view…</div>
+    <div class="page">
+      <header class="page-header">
+        <div>
+          <div class="page-badge">👨‍👩‍👧‍👦 Parent/Student View</div>
+          <h1 class="page-title">Youth Group Management System</h1>
+          <p class="page-subtitle">
+            View attendance history, upcoming events, and student information
+          </p>
+        </div>
+        <nav class="page-nav">
+          <a href="index.html" class="nav-link">← Leader Dashboard</a>
+        </nav>
+      </header>
+
+      <div id="app">
+        <div class="spinner"></div>
+      </div>
+    </div>
 
     <script src="student.js"></script>
   </body>

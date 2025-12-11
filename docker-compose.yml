@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: youth_app
+    environment:
+      # Connect to existing MySQL container on host
+      DB_HOST: host.docker.internal
+      DB_PORT: 3399
+      DB_USER: root
+      DB_NAME: youth_db
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount secrets directory
+      - ./secrets:/app/secrets:ro
+    extra_hosts:
+      # Allow container to reach host machine
+      - "host.docker.internal:host-gateway"

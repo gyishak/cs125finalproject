@@ -46,14 +46,14 @@ CREATE TABLE Student(
     FOREIGN KEY (guardianID) REFERENCES Guardian(ID)
 );
 
+-- ✅ FIXED: Removed redundant firstName/lastName
 CREATE TABLE GroupMember(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     groupID INT,
     studentID INT,
-    firstName VARCHAR(60),
-    lastName VARCHAR(60),
     FOREIGN KEY (groupID) REFERENCES AGroup(ID),
-    FOREIGN KEY (studentID) REFERENCES Student(ID)
+    FOREIGN KEY (studentID) REFERENCES Student(ID),
+    UNIQUE KEY unique_group_student (groupID, studentID)
 );
 
 CREATE TABLE EventLeader(
@@ -84,7 +84,10 @@ CREATE TABLE VolunteerRecord(
 CREATE TABLE GroupLeader(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     groupID INT,
-    FOREIGN KEY (groupID) REFERENCES AGroup(ID)
+    leaderID INT,
+    FOREIGN KEY (groupID) REFERENCES AGroup(ID),
+    FOREIGN KEY (leaderID) REFERENCES Leader(ID),
+    UNIQUE KEY unique_group_leader (groupID, leaderID)
 );
 
 CREATE TABLE AttendanceStudent(
@@ -96,4 +99,3 @@ CREATE TABLE AttendanceStudent(
     FOREIGN KEY (eventID) REFERENCES Event(ID),
     FOREIGN KEY (studentID) REFERENCES Student(ID)
 );
-

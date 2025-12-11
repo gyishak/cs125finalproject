@@ -1,129 +1,124 @@
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field as PydanticField
-from bson import ObjectId
-import mysql.connector
 from fastapi import FastAPI, HTTPException
-from database import get_db_connection, get_mongo_db, get_redis_conn, close_connections, get_mysql_pool, get_mongo_client, get_redis_client
-import redis
-from fastapi.responses import FileResponse
-import os
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import mysql.connector
+from bson import ObjectId
+from pydantic import BaseModel
+from typing import Any, List
+import redis
+import os
+from database import (
+    get_db_connection,
+    get_mongo_db,
+    get_redis_conn,
+    close_connections,
+    get_mysql_pool,
+    get_mongo_client,
+    get_redis_client,
+)
 from extra_routes import router as extra_router
 from graphql_api import graphql_app
+from fastapi.responses import FileResponse
 
 
-# --- App Lifecycle Management ---
+# ------------------------------------------------------------------------------
+# APP LIFECYCLE
+# ------------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize all database connections
-    print("Application startup: Initializing database connections...")
+    print("Application startup: initializing DB pools...")
     get_mysql_pool()
     get_mongo_client()
     get_redis_client()
     yield
-    # Shutdown: Close all database connections
-    print("Application shutdown: Closing database connections...")
+    print("Application shutdown: closing DB pools...")
     close_connections()
 
-from fastapi.middleware.cors import CORSMiddleware
 
-app=FastAPI(
+app = FastAPI(
     title="Church Youth Ministry",
-    description="An API for the church youth group ministry/program database",
-    version="1.0.0",
+    description="API for youth group events, students, attendance & notes",
+    version="2.0",
+    lifespan=lifespan
 )
 
-# --- CORS Middleware ---
-# This will allow the frontend (running on a different origin) to communicate with the API.
-# For demonstration purposes, we allow all origins, methods, and headers.
+
+# ------------------------------------------------------------------------------
+# CORS
+# ------------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your frontend's domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ------------------------------------------------------------------------------
+# ROUTERS
+# ------------------------------------------------------------------------------
 app.include_router(extra_router)
 app.include_router(graphql_app, prefix="/graphql")
 
+@app.get("/events")
+def get_all_events():
+    """Return all events for the dashboard."""
+    try:
+        cnx = get_db_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                ID AS id,
+                Type AS type,
+                Notes AS notes,
+                eventTypeID AS eventTypeId
+            FROM Event
+            ORDER BY ID
+        """)
+        events = cursor.fetchall()
+        return events
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"MySQL Error: {err}")
+
+    finally:
+        if "cursor" in locals(): cursor.close()
+        if "cnx" in locals() and cnx.is_connected(): cnx.close()
+
+
 @app.get("/students")
 def get_all_students():
-    """
-    Retrieves a list of all students.
-    """
+    """Return all students for the dashboard."""
     try:
-
         cnx = get_db_connection()
-
         cursor = cnx.cursor(dictionary=True)
-        cursor.execute("SELECT id, guardianID, firstName, lastName FROM Student")
+
+        cursor.execute("""
+            SELECT
+                id,
+                guardianID,
+                firstName,
+                lastName
+            FROM Student
+            ORDER BY id
+        """)
         students = cursor.fetchall()
         return students
+
     except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+        raise HTTPException(status_code=500, detail=f"MySQL Error: {err}")
+
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
-            cursor.close()
-            cnx.close()
-
-@app.get("/student/{student_id}")
-def get_student_by_id(student_id: int):
-    """
-    Retrieves a specific customer by their ID.
-    """
-    try:
-
-        cnx = get_db_connection()
-        cursor = cnx.cursor(dictionary=True)
-
-        query = "SELECT id, guardianID, firstName, lastName FROM Student WHERE id = %s;"
-        cursor.execute(query, (student_id,))
-        student = cursor.fetchone()
-        if not student:
-
-            raise HTTPException(status_code=404, detail="Student not found")
-
-        return student
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"Database error: {err}")
-    finally:
-        if 'cnx' in locals() and cnx.is_connected():
-            cursor.close()
-            cnx.close()
+        if "cursor" in locals(): cursor.close()
+        if "cnx" in locals() and cnx.is_connected(): cnx.close()
 
 
-
-# --- Pydantic Models for MongoDB Data ---
-from typing import List, Optional, Any
-from bson import ObjectId
-
-class PyObjectId(ObjectId):
-    # @classmethod
-    # def __get_pydantic_core_schema__(
-    #     cls, source: Any, handler: GetCoreSchemaHandler
-    # ) -> core_schema.CoreSchema:
-    #     """
-    #     Return a Pydantic CoreSchema that defines how to validate and serialize ObjectIds.
-    #     """
-    #     return core_schema.json_or_python_schema(
-    #         json_schema=core_schema.str_schema(),
-    #         python_schema=core_schema.union_schema(
-    #             [
-    #                 core_schema.is_instance_schema(ObjectId),
-    #                 core_schema.no_info_plain_validator_function(cls.validate),
-    #             ]
-    #         ),
-    #         serialization=core_schema.plain_serializer_function_ser_schema(str),
-    #     )
-
-    @classmethod
-    def validate(cls, v: Any) -> ObjectId:
-        """Validate that the input is a valid ObjectId."""
-        if isinstance(v, ObjectId):
-            return v
-        if ObjectId.is_valid(v):
-            return ObjectId(v)
-        raise ValueError("Invalid ObjectId")
+# ------------------------------------------------------------------------------
+# EVENT-TYPE MONGO + REDIS ENDPOINTS (Your existing logic)
+# ------------------------------------------------------------------------------
 
 class myField(BaseModel):
     type: str
@@ -133,77 +128,124 @@ class myEventType(BaseModel):
     name: str
     fields: List[myField]
 
+
 @app.post("/events-types")
 def create_eventType(event_type: myEventType):
+    """Create new EventType in MySQL + Mongo."""
     try:
         cnx = get_db_connection()
         cursor = cnx.cursor(dictionary=True)
-        cursor.execute("INSERT INTO EVENT_TYPE  (name) VALUES (%s);", (event_type.name,))
+
+        cursor.execute(
+            "INSERT INTO EVENT_TYPE (name) VALUES (%s);",
+            (event_type.name,)
+        )
         cnx.commit()
-        event_typeId = cursor.lastrowid
+        event_type_id = cursor.lastrowid
 
-    except mysql.connector.Error as err:
-        raise HTTPException(status_code=500, detail=f"Database error: {err}")
-    finally:
-        if 'cnx' in locals() and cnx.is_connected():
-            cursor.close()
-            cnx.close()
-    db = get_mongo_db()
-    events_collection = db["event_types"]
-    try:
-        event_data = {
-                        "event-id": event_typeId,
-                        "name": event_type.name,
-                        "fields": [
-                            {
-                                "Type": afield.type,
-                                "Notes": afield.note
-                            }
-                                for afield in event_type.fields
-                        ]
-                    }
-        print(event_data)
-        event=events_collection.insert_one(event_data)
-        return {"eventType": event_typeId, "mongo_id": str(event.inserted_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"MySQL error: {e}")
+
     finally:
-        if 'cursor' in locals():
-            cursor.close()
+        if "cursor" in locals(): cursor.close()
+        if "cnx" in locals() and cnx.is_connected(): cnx.close()
+
+    # Now insert into Mongo
+    try:
+        db = get_mongo_db()
+        coll = db["event_types"]
+
+        document = {
+            "event-id": event_type_id,
+            "name": event_type.name,
+            "fields": [{"Type": f.type, "Notes": f.note} for f in event_type.fields]
+        }
+
+        result = coll.insert_one(document)
+        return {"mysql_id": event_type_id, "mongo_id": str(result.inserted_id)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Mongo error: {e}")
 
 
-# --- Pydantic Model for Redis Data ---
-class checkInEvent(BaseModel):
+# ------------------------------------------------------------------------------
+# REDIS CHECK-IN ENDPOINTS
+# ------------------------------------------------------------------------------
+
+class CheckInEvent(BaseModel):
     eventID: int
     studentID: int
 
 @app.post("/event/check-in")
-def checkIn_event(check_in: checkInEvent):
+def check_in_student(check: CheckInEvent):
+    """Write a student check-in to Redis."""
     try:
+        # Validate event exists
         cnx = get_db_connection()
         cursor = cnx.cursor(dictionary=True)
-        cursor.execute("SELECT ID FROM Event  WHERE ID = (%s)", (check_in.eventID,))
-        event=cursor.fetchone()
+
+        cursor.execute("SELECT ID FROM Event WHERE ID = %s", (check.eventID,))
+        event = cursor.fetchone()
+
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
-        r=get_redis_conn()
-        r.sadd(f"event {check_in.eventID}:checkIn", check_in.studentID)
-        return {"event_id": check_in.eventID, "student_id": check_in.studentID, "student_status": "checked_in"}
+
+        r = get_redis_conn()
+        r.sadd(f"event:{check.eventID}:checkins", check.studentID)
+
+        return {
+            "event_id": check.eventID,
+            "student_id": check.studentID,
+            "status": "checked_in"
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"Redis error: {e}")
+
     finally:
-        if 'cursor' in locals():
-            cursor.close()
+        if "cursor" in locals(): cursor.close()
+        if "cnx" in locals() and cnx.is_connected(): cnx.close()
+
 
 @app.get("/debug/redis/{event_id}")
 def debug_redis(event_id: int):
+    """Debug helper to see redis set contents."""
     r = get_redis_conn()
-    key = f"event {event_id}:checkIn"
-    return {"key": key, "members": list(r.smembers(key))}
+    key = f"event:{event_id}:checkins"
+    return {"members": list(r.smembers(key))}
 
+@app.get("/")
+@app.get("/leader-login.html")
+def login_page():
+    return FileResponse("/app/frontend/leader-login.html")
+
+@app.get("/index.html")
+def index_page():
+    return FileResponse("/app/frontend/index.html")
+
+@app.get("/student.html")
+def student_page():
+    return FileResponse("/app/frontend/student.html")
+
+@app.get("/styles.css")
+def styles():
+    return FileResponse("/app/frontend/styles.css")
+
+@app.get("/app.js")
+def app_js():
+    return FileResponse("/app/frontend/app.js")
+
+@app.get("/student.js")
+def student_js():
+    return FileResponse("/app/frontend/student.js")
+
+@app.get("/leader-login.js")
+def leader_login_js():
+    return FileResponse("/app/frontend/leader-login.js")
+# ------------------------------------------------------------------------------
+# RUN APP
+# ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app)
-
+    uvicorn.run(app, reload=True)

@@ -122,16 +122,9 @@ def get_checked_in_students(event_id: int):
 
 @router.post("/event/{event_id}/persist-attendance")
 def persist_attendance(event_id: int):
-    """
-    End-of-event: read check-ins from Redis and write them
-    as AttendanceRecord rows in MySQL, then clear Redis key.
-    NOTE: your AttendanceRecord table currently does not have studentID,
-    so we just record that the event had attendance.
-    """
     r = get_redis_conn()
     redis_key = f"event {event_id}:checkIn"
     student_ids = list(r.smembers(redis_key))
-
     if not student_ids:
         return {
             "event_id": event_id,

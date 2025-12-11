@@ -5,3 +5,4 @@ pymongo
 redis
 strawberry-graphql
 python-dotenv
+ariadne
