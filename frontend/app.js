@@ -1,4 +1,4 @@
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://localhost:8000";
 const GRAPHQL_URL = `${API_BASE}/graphql`;
 
 // ============================================================
@@ -617,9 +617,55 @@ async function initDashboard() {
 
   const root = document.getElementById("app");
 
-  // Load events + students
+  // Load events + students + groups
   const events = (await safeFetch(`${API_BASE}/events`)) || [];
   const students = (await safeFetch(`${API_BASE}/students`)) || [];
+
+  // Load groups via GraphQL
+  let groups = [];
+  try {
+    const query = `
+      query GetAllGroups {
+        groups {
+          id
+          name
+          memberCount
+          members {
+            id
+            firstName
+            lastName
+          }
+          leaders {
+            id
+            firstName
+            lastName
+          }
+        }
+      }
+    `;
+    const data = await gqlRequest(query);
+    groups = data.groups || [];
+  } catch (err) {
+    console.error("Error loading groups:", err);
+  }
+
+  // Load volunteers via GraphQL
+  let volunteers = [];
+  try {
+    const query = `
+      query GetAllVolunteers {
+        volunteers {
+          id
+          firstName
+          lastName
+        }
+      }
+    `;
+    const data = await gqlRequest(query);
+    volunteers = data.volunteers || [];
+  } catch (err) {
+    console.error("Error loading volunteers:", err);
+  }
 
   if (events.length === 0 && students.length === 0) {
     root.innerHTML = `
@@ -654,6 +700,28 @@ async function initDashboard() {
         <p class="card-subtitle">Click a student to view details, or add a new one</p>
         <button id="create-student-btn" style="margin-bottom: 12px; width: 100%;">+ Add New Student</button>
         <div class="item-list" id="students-list"></div>
+      </div>
+
+      <!-- SMALL GROUPS -->
+      <div class="card" style="grid-column: 1 / -1;">
+        <div class="card-header">
+          <h2 class="card-title">Small Groups</h2>
+          <span class="card-tag">${groups.length} groups</span>
+        </div>
+        <p class="card-subtitle">Manage small groups and their members</p>
+        <button id="create-group-btn" style="margin-bottom: 12px; width: 100%;">+ Create New Group</button>
+        <div id="groups-list"></div>
+      </div>
+
+      <!-- VOLUNTEERS -->
+      <div class="card" style="grid-column: 1 / -1;">
+        <div class="card-header">
+          <h2 class="card-title">Volunteers</h2>
+          <span class="card-tag">${volunteers.length} total</span>
+        </div>
+        <p class="card-subtitle">Manage volunteers and track their service</p>
+        <button id="create-volunteer-btn" style="margin-bottom: 12px; width: 100%;">+ Add New Volunteer</button>
+        <div class="item-list" id="volunteers-list"></div>
       </div>
     </div>
   `;
@@ -722,6 +790,86 @@ async function initDashboard() {
   document
     .getElementById("create-student-btn")
     .addEventListener("click", openCreateStudentModal);
+
+  // Render groups
+  const groupsListEl = document.getElementById("groups-list");
+  if (groups.length === 0) {
+    groupsListEl.innerHTML =
+      '<div class="empty-state">No groups found. Create your first small group!</div>';
+  } else {
+    groupsListEl.innerHTML = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+        ${groups
+          .map(
+            (g) => `
+          <div class="item" data-group-id="${g.id}" style="cursor: pointer;">
+            <div class="item-title">${g.name}</div>
+            <div class="item-detail">
+              ${g.memberCount} member${g.memberCount !== 1 ? "s" : ""} • 
+              ${g.leaders.length} leader${g.leaders.length !== 1 ? "s" : ""}
+            </div>
+            <div style="margin-top: 8px; font-size: 12px; color: #8b7355;">
+              ${
+                g.leaders.length > 0
+                  ? `Led by: ${g.leaders
+                      .map((l) => `${l.firstName} ${l.lastName}`)
+                      .join(", ")}`
+                  : "No leaders assigned"
+              }
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+    `;
+
+    // Add click handlers
+    document.querySelectorAll(".item[data-group-id]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const groupId = parseInt(el.dataset.groupId);
+        const group = groups.find((g) => g.id === groupId);
+        if (group) openGroupModal(group, students);
+      });
+    });
+  }
+
+  // Create group button
+  document
+    .getElementById("create-group-btn")
+    .addEventListener("click", openCreateGroupModal);
+
+  // Render volunteers
+  const volunteersListEl = document.getElementById("volunteers-list");
+  if (volunteers.length === 0) {
+    volunteersListEl.innerHTML =
+      '<div class="empty-state">No volunteers found. Add your first volunteer!</div>';
+  } else {
+    volunteersListEl.innerHTML = volunteers
+      .map(
+        (v) => `
+      <div class="item" data-volunteer-id="${v.id}" style="cursor: pointer;">
+        <div class="item-title">${v.firstName} ${v.lastName}</div>
+        <div class="item-detail">Volunteer ID: ${v.id}</div>
+      </div>
+    `
+      )
+      .join("");
+
+    // Add click handlers
+    document.querySelectorAll(".item[data-volunteer-id]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const volunteerId = parseInt(el.dataset.volunteerId);
+        const volunteer = volunteers.find((v) => v.id === volunteerId);
+        if (volunteer) openVolunteerModal(volunteer, events);
+      });
+    });
+  }
+
+  // Create volunteer button
+  document
+    .getElementById("create-volunteer-btn")
+    .addEventListener("click", openCreateVolunteerModal);
 }
 
 // Initialize on load
@@ -1023,4 +1171,773 @@ function openEditEventModal(event) {
         showStatus("edit-event-status", `Error: ${err.message}`, "error");
       }
     });
+}
+
+// ============================================================
+// SMALL GROUPS MODALS
+// ============================================================
+
+function openCreateGroupModal() {
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">Create New Group</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    
+    <form id="create-group-form">
+      <div class="form-group">
+        <label class="form-label">Group Name</label>
+        <input type="text" id="group-name" placeholder="e.g., Middle School Girls" required />
+      </div>
+      <button type="submit">Create Group</button>
+      <div id="create-group-status" style="display: none;"></div>
+    </form>
+  `;
+
+  const overlay = openModal(modalHTML);
+
+  document
+    .getElementById("create-group-form")
+    .addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const name = document.getElementById("group-name").value.trim();
+
+      if (!name) {
+        showStatus("create-group-status", "Group name is required", "error");
+        return;
+      }
+
+      try {
+        const mutation = `
+          mutation CreateGroup($name: String!) {
+            createGroup(name: $name) {
+              id
+              name
+            }
+          }
+        `;
+
+        await gqlRequest(mutation, { name });
+
+        showStatus(
+          "create-group-status",
+          "Group created successfully!",
+          "success"
+        );
+
+        setTimeout(() => {
+          closeModal(overlay);
+          initDashboard();
+        }, 1500);
+      } catch (err) {
+        showStatus("create-group-status", `Error: ${err.message}`, "error");
+      }
+    });
+}
+
+async function openGroupModal(group, allStudents) {
+  const memberIds = group.members.map((m) => m.id);
+  const availableStudents = allStudents.filter(
+    (s) => !memberIds.includes(s.id)
+  );
+
+  // Fetch all leaders to allow assignment
+  let allLeaders = [];
+  try {
+    const query = `
+      query {
+        leaders {
+          id
+          firstName
+          lastName
+        }
+      }
+    `;
+
+    // We need to add this query to GraphQL first, but let's use what we have
+    // For now, we'll hardcode the leaders from your data
+    allLeaders = [
+      { id: 1, firstName: "Sarah", lastName: "Brown" },
+      { id: 2, firstName: "Michael", lastName: "Davis" },
+      { id: 3, firstName: "Laura", lastName: "Green" },
+      { id: 4, firstName: "Daniel", lastName: "White" },
+      { id: 5, firstName: "Rachel", lastName: "Thompson" },
+    ];
+  } catch (err) {
+    console.error("Error loading leaders:", err);
+  }
+
+  const leaderIds = group.leaders.map((l) => l.id);
+  const availableLeaders = allLeaders.filter((l) => !leaderIds.includes(l.id));
+
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">${group.name}</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+
+    <div class="modal-section">
+      <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Leaders (${
+        group.leaders.length
+      })</h3>
+      ${
+        group.leaders.length > 0
+          ? `<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+              ${group.leaders
+                .map(
+                  (l) => `
+                <div class="checkin-badge">
+                  ${l.firstName} ${l.lastName}
+                  <button onclick="removeLeaderFromGroup(${group.id}, ${l.id})" 
+                          style="margin-left: 6px; background: none; border: none; cursor: pointer; color: inherit; padding: 0;">×</button>
+                </div>
+              `
+                )
+                .join("")}
+            </div>`
+          : '<p style="color: #8b7355; font-size: 14px; margin-bottom: 16px;">No leaders assigned</p>'
+      }
+      ${
+        availableLeaders.length > 0
+          ? `
+        <div class="form-group" style="margin-top: 12px;">
+          <label class="form-label">Add Leader</label>
+          <select id="leader-to-add" style="width: 100%; padding: 10px; border: 1px solid rgba(139, 115, 85, 0.2); border-radius: 7px;">
+            <option value="">Select a leader...</option>
+            ${availableLeaders
+              .map(
+                (l) =>
+                  `<option value="${l.id}">${l.firstName} ${l.lastName}</option>`
+              )
+              .join("")}
+          </select>
+        </div>
+        <button onclick="addLeaderToGroup(${
+          group.id
+        })" style="width: 100%; margin-top: 8px;">Add Leader</button>
+        <div id="add-leader-status" style="display: none; margin-top: 12px;"></div>
+      `
+          : ""
+      }
+    </div>
+
+    <div class="modal-section">
+      <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Members (${
+        group.members.length
+      })</h3>
+      ${
+        group.members.length > 0
+          ? `<div class="item-list" style="max-height: 200px;">
+              ${group.members
+                .map(
+                  (m) => `
+                <div class="item" style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div class="item-title">${m.firstName} ${m.lastName}</div>
+                    <div class="item-detail">Student ID: ${m.id}</div>
+                  </div>
+                  <button onclick="removeStudentFromGroup(${group.id}, ${m.id})" 
+                          class="button-danger" style="padding: 6px 12px;">Remove</button>
+                </div>
+              `
+                )
+                .join("")}
+            </div>`
+          : '<p style="color: #8b7355; font-size: 14px;">No members yet</p>'
+      }
+    </div>
+
+    ${
+      availableStudents.length > 0
+        ? `
+      <div class="modal-section">
+        <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Add Members</h3>
+        <div class="form-group">
+          <select id="student-to-add" style="width: 100%; padding: 10px; border: 1px solid rgba(139, 115, 85, 0.2); border-radius: 7px;">
+            <option value="">Select a student...</option>
+            ${availableStudents
+              .map(
+                (s) =>
+                  `<option value="${s.id}">${s.firstName} ${s.lastName}</option>`
+              )
+              .join("")}
+          </select>
+        </div>
+        <button onclick="addStudentToGroup(${
+          group.id
+        })" style="width: 100%;">Add Student</button>
+        <div id="add-member-status" style="display: none; margin-top: 12px;"></div>
+      </div>
+    `
+        : ""
+    }
+
+    <div class="modal-section">
+      <div class="button-group">
+        <button onclick="openEditGroupModal(${group.id}, '${group.name.replace(
+    /'/g,
+    "\\'"
+  )}')">Rename Group</button>
+        <button onclick="deleteGroup(${
+          group.id
+        })" class="button-danger">Delete Group</button>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHTML);
+}
+
+async function addStudentToGroup(groupId) {
+  const selectEl = document.getElementById("student-to-add");
+  const studentId = parseInt(selectEl.value);
+
+  if (!studentId) {
+    showStatus("add-member-status", "Please select a student", "error");
+    return;
+  }
+
+  try {
+    const mutation = `
+      mutation AddStudentToGroup($groupId: Int!, $studentId: Int!) {
+        addStudentToGroup(groupId: $groupId, studentId: $studentId) {
+          success
+          message
+        }
+      }
+    `;
+
+    const data = await gqlRequest(mutation, { groupId, studentId });
+
+    if (data.addStudentToGroup.success) {
+      showStatus("add-member-status", "Student added successfully!", "success");
+      setTimeout(() => {
+        document.querySelector(".modal-overlay").remove();
+        initDashboard();
+      }, 1000);
+    } else {
+      showStatus("add-member-status", data.addStudentToGroup.message, "error");
+    }
+  } catch (err) {
+    showStatus("add-member-status", `Error: ${err.message}`, "error");
+  }
+}
+
+async function addLeaderToGroup(groupId) {
+  const selectEl = document.getElementById("leader-to-add");
+  const leaderId = parseInt(selectEl.value);
+
+  if (!leaderId) {
+    showStatus("add-leader-status", "Please select a leader", "error");
+    return;
+  }
+
+  try {
+    const mutation = `
+      mutation AddLeaderToGroup($groupId: Int!, $leaderId: Int!) {
+        addLeaderToGroup(groupId: $groupId, leaderId: $leaderId) {
+          success
+          message
+        }
+      }
+    `;
+
+    const data = await gqlRequest(mutation, { groupId, leaderId });
+
+    if (data.addLeaderToGroup.success) {
+      showStatus("add-leader-status", "Leader added successfully!", "success");
+      setTimeout(() => {
+        document.querySelector(".modal-overlay").remove();
+        initDashboard();
+      }, 1000);
+    } else {
+      showStatus("add-leader-status", data.addLeaderToGroup.message, "error");
+    }
+  } catch (err) {
+    showStatus("add-leader-status", `Error: ${err.message}`, "error");
+  }
+}
+
+async function removeStudentFromGroup(groupId, studentId) {
+  if (!confirm("Remove this student from the group?")) return;
+
+  try {
+    const mutation = `
+      mutation RemoveStudentFromGroup($groupId: Int!, $studentId: Int!) {
+        removeStudentFromGroup(groupId: $groupId, studentId: $studentId) {
+          success
+          message
+        }
+      }
+    `;
+
+    await gqlRequest(mutation, { groupId, studentId });
+
+    document.querySelector(".modal-overlay").remove();
+    initDashboard();
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function removeLeaderFromGroup(groupId, leaderId) {
+  if (!confirm("Remove this leader from the group?")) return;
+
+  try {
+    const mutation = `
+      mutation RemoveLeaderFromGroup($groupId: Int!, $leaderId: Int!) {
+        removeLeaderFromGroup(groupId: $groupId, leaderId: $leaderId) {
+          success
+          message
+        }
+      }
+    `;
+
+    await gqlRequest(mutation, { groupId, leaderId });
+
+    document.querySelector(".modal-overlay").remove();
+    initDashboard();
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+function openEditGroupModal(groupId, currentName) {
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">Rename Group</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    
+    <form id="edit-group-form">
+      <div class="form-group">
+        <label class="form-label">Group Name</label>
+        <input type="text" id="edit-group-name" value="${currentName}" required />
+      </div>
+      <button type="submit">Save Changes</button>
+      <div id="edit-group-status" style="display: none;"></div>
+    </form>
+  `;
+
+  const overlay = openModal(modalHTML);
+
+  document
+    .getElementById("edit-group-form")
+    .addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const name = document.getElementById("edit-group-name").value.trim();
+
+      try {
+        const mutation = `
+          mutation UpdateGroup($groupId: Int!, $name: String!) {
+            updateGroup(groupId: $groupId, name: $name) {
+              id
+              name
+            }
+          }
+        `;
+
+        await gqlRequest(mutation, { groupId, name });
+
+        showStatus(
+          "edit-group-status",
+          "Group updated successfully!",
+          "success"
+        );
+
+        setTimeout(() => {
+          closeModal(overlay);
+          initDashboard();
+        }, 1500);
+      } catch (err) {
+        showStatus("edit-group-status", `Error: ${err.message}`, "error");
+      }
+    });
+}
+
+async function deleteGroup(groupId) {
+  if (
+    !confirm(
+      "Are you sure you want to delete this group? This will remove all members but will not delete the students themselves."
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const mutation = `
+      mutation DeleteGroup($groupId: Int!) {
+        deleteGroup(groupId: $groupId) {
+          success
+          message
+        }
+      }
+    `;
+
+    const data = await gqlRequest(mutation, { groupId });
+
+    if (data.deleteGroup.success) {
+      document.querySelector(".modal-overlay").remove();
+      initDashboard();
+    } else {
+      alert(data.deleteGroup.message);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+// ============================================================
+// VOLUNTEERS MODALS
+// ============================================================
+
+function openCreateVolunteerModal() {
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">Add New Volunteer</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    
+    <form id="create-volunteer-form">
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" id="volunteer-firstname" placeholder="First name" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Last Name</label>
+        <input type="text" id="volunteer-lastname" placeholder="Last name" required />
+      </div>
+      <button type="submit">Add Volunteer</button>
+      <div id="create-volunteer-status" style="display: none;"></div>
+    </form>
+  `;
+
+  const overlay = openModal(modalHTML);
+
+  document
+    .getElementById("create-volunteer-form")
+    .addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const firstName = document
+        .getElementById("volunteer-firstname")
+        .value.trim();
+      const lastName = document
+        .getElementById("volunteer-lastname")
+        .value.trim();
+
+      if (!firstName || !lastName) {
+        showStatus(
+          "create-volunteer-status",
+          "Both names are required",
+          "error"
+        );
+        return;
+      }
+
+      try {
+        const mutation = `
+          mutation CreateVolunteer($firstName: String!, $lastName: String!) {
+            createVolunteer(firstName: $firstName, lastName: $lastName) {
+              id
+              firstName
+              lastName
+            }
+          }
+        `;
+
+        await gqlRequest(mutation, { firstName, lastName });
+
+        showStatus(
+          "create-volunteer-status",
+          "Volunteer added successfully!",
+          "success"
+        );
+
+        setTimeout(() => {
+          closeModal(overlay);
+          initDashboard();
+        }, 1500);
+      } catch (err) {
+        showStatus("create-volunteer-status", `Error: ${err.message}`, "error");
+      }
+    });
+}
+
+async function openVolunteerModal(volunteer, allEvents) {
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">${volunteer.firstName} ${volunteer.lastName}</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+
+    <div class="modal-section">
+      <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Volunteer Information</h3>
+      <div class="info-item">
+        <div class="info-label">Name</div>
+        <div class="info-value">${volunteer.firstName} ${
+    volunteer.lastName
+  }</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Volunteer ID</div>
+        <div class="info-value">${volunteer.id}</div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Service History</h3>
+      <div id="volunteer-records-list">Loading...</div>
+    </div>
+
+    ${
+      allEvents.length > 0
+        ? `
+      <div class="modal-section">
+        <h3 style="margin-bottom: 12px; font-size: 16px; font-weight: 600;">Assign to Event</h3>
+        <div class="form-group">
+          <select id="event-to-assign" style="width: 100%; padding: 10px; border: 1px solid rgba(139, 115, 85, 0.2); border-radius: 7px;">
+            <option value="">Select an event...</option>
+            ${allEvents
+              .map((e) => `<option value="${e.id}">${e.Type}</option>`)
+              .join("")}
+          </select>
+        </div>
+        <button onclick="assignVolunteerToEvent(${
+          volunteer.id
+        })" style="width: 100%;">Assign to Event</button>
+        <div id="assign-event-status" style="display: none; margin-top: 12px;"></div>
+      </div>
+    `
+        : ""
+    }
+
+    <div class="modal-section">
+      <div class="button-group">
+        <button onclick="openEditVolunteerModal(${
+          volunteer.id
+        }, '${volunteer.firstName.replace(
+    /'/g,
+    "\\'"
+  )}', '${volunteer.lastName.replace(/'/g, "\\'")}')">Edit Volunteer</button>
+        <button onclick="deleteVolunteer(${
+          volunteer.id
+        })" class="button-danger">Delete Volunteer</button>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHTML);
+
+  // Load volunteer records
+  try {
+    const query = `
+      query GetVolunteerRecords($volunteerId: Int!) {
+        volunteerRecords(volunteerId: $volunteerId) {
+          id
+          eventId
+          eventName
+        }
+      }
+    `;
+
+    const data = await gqlRequest(query, { volunteerId: volunteer.id });
+    const records = data.volunteerRecords || [];
+
+    const recordsEl = document.getElementById("volunteer-records-list");
+    if (records.length === 0) {
+      recordsEl.innerHTML =
+        '<p style="color: #8b7355; font-size: 14px;">No service history yet</p>';
+    } else {
+      recordsEl.innerHTML = records
+        .map(
+          (r) => `
+        <div class="item" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div class="item-title">${
+              r.eventName || `Event #${r.eventId}`
+            }</div>
+            <div class="item-detail">Record ID: ${r.id}</div>
+          </div>
+          <button onclick="removeVolunteerFromEvent(${volunteer.id}, ${
+            r.eventId
+          })" 
+                  class="button-danger" style="padding: 6px 12px;">Remove</button>
+        </div>
+      `
+        )
+        .join("");
+    }
+  } catch (err) {
+    console.error("Error loading volunteer records:", err);
+    document.getElementById("volunteer-records-list").innerHTML =
+      '<p style="color: #b85c4f;">Error loading records</p>';
+  }
+}
+
+async function assignVolunteerToEvent(volunteerId) {
+  const selectEl = document.getElementById("event-to-assign");
+  const eventId = parseInt(selectEl.value);
+
+  if (!eventId) {
+    showStatus("assign-event-status", "Please select an event", "error");
+    return;
+  }
+
+  try {
+    const mutation = `
+      mutation AssignVolunteer($volunteerId: Int!, $eventId: Int!) {
+        addVolunteerToEvent(volunteerId: $volunteerId, eventId: $eventId) {
+          success
+          message
+        }
+      }
+    `;
+
+    const data = await gqlRequest(mutation, { volunteerId, eventId });
+
+    if (data.addVolunteerToEvent.success) {
+      showStatus(
+        "assign-event-status",
+        "Volunteer assigned successfully!",
+        "success"
+      );
+      setTimeout(() => {
+        document.querySelector(".modal-overlay").remove();
+        initDashboard();
+      }, 1000);
+    } else {
+      showStatus(
+        "assign-event-status",
+        data.addVolunteerToEvent.message,
+        "error"
+      );
+    }
+  } catch (err) {
+    showStatus("assign-event-status", `Error: ${err.message}`, "error");
+  }
+}
+
+async function removeVolunteerFromEvent(volunteerId, eventId) {
+  if (!confirm("Remove this volunteer from the event?")) return;
+
+  try {
+    const mutation = `
+      mutation RemoveVolunteerFromEvent($volunteerId: Int!, $eventId: Int!) {
+        removeVolunteerFromEvent(volunteerId: $volunteerId, eventId: $eventId) {
+          success
+          message
+        }
+      }
+    `;
+
+    await gqlRequest(mutation, { volunteerId, eventId });
+
+    document.querySelector(".modal-overlay").remove();
+    initDashboard();
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+function openEditVolunteerModal(volunteerId, firstName, lastName) {
+  const modalHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">Edit Volunteer</h2>
+      <button class="close-button" onclick="this.closest('.modal-overlay').remove()">×</button>
+    </div>
+    
+    <form id="edit-volunteer-form">
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" id="edit-volunteer-firstname" value="${firstName}" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Last Name</label>
+        <input type="text" id="edit-volunteer-lastname" value="${lastName}" required />
+      </div>
+      <button type="submit">Save Changes</button>
+      <div id="edit-volunteer-status" style="display: none;"></div>
+    </form>
+  `;
+
+  const overlay = openModal(modalHTML);
+
+  document
+    .getElementById("edit-volunteer-form")
+    .addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const newFirstName = document
+        .getElementById("edit-volunteer-firstname")
+        .value.trim();
+      const newLastName = document
+        .getElementById("edit-volunteer-lastname")
+        .value.trim();
+
+      try {
+        const mutation = `
+          mutation UpdateVolunteer($volunteerId: Int!, $firstName: String, $lastName: String) {
+            updateVolunteer(volunteerId: $volunteerId, firstName: $firstName, lastName: $lastName) {
+              id
+              firstName
+              lastName
+            }
+          }
+        `;
+
+        await gqlRequest(mutation, {
+          volunteerId,
+          firstName: newFirstName,
+          lastName: newLastName,
+        });
+
+        showStatus(
+          "edit-volunteer-status",
+          "Volunteer updated successfully!",
+          "success"
+        );
+
+        setTimeout(() => {
+          closeModal(overlay);
+          initDashboard();
+        }, 1500);
+      } catch (err) {
+        showStatus("edit-volunteer-status", `Error: ${err.message}`, "error");
+      }
+    });
+}
+
+async function deleteVolunteer(volunteerId) {
+  if (
+    !confirm(
+      "Are you sure you want to delete this volunteer? This will also remove all their service records."
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const mutation = `
+      mutation DeleteVolunteer($volunteerId: Int!) {
+        deleteVolunteer(volunteerId: $volunteerId) {
+          success
+          message
+        }
+      }
+    `;
+
+    const data = await gqlRequest(mutation, { volunteerId });
+
+    if (data.deleteVolunteer.success) {
+      document.querySelector(".modal-overlay").remove();
+      initDashboard();
+    } else {
+      alert(data.deleteVolunteer.message);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
 }

@@ -107,6 +107,40 @@ class SuccessResult:
     message: str
 
 
+@strawberry.type
+class GroupType:
+    id: int
+    name: str
+    memberCount: int = 0
+    members: List[StudentType] = strawberry.field(default_factory=list)
+    leaders: List[LeaderType] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class GroupMemberType:
+    id: int
+    groupId: int
+    studentId: int
+    groupName: Optional[str] = None
+    studentName: Optional[str] = None
+
+
+@strawberry.type
+class VolunteerType:
+    id: int
+    firstName: str
+    lastName: str
+
+
+@strawberry.type
+class VolunteerRecordType:
+    id: int
+    volunteerId: int
+    eventId: int
+    volunteerName: Optional[str] = None
+    eventName: Optional[str] = None
+
+
 # ---------- Query Resolvers (READ) ----------
 
 @strawberry.type
@@ -160,13 +194,14 @@ class Query:
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """
-            SELECT a.ID as id,
-                   a.eventID as eventId,
+            SELECT a.ID        as id,
+                   a.eventID   as eventId,
                    a.studentID as studentId,
                    a.theDATE,
                    a.theTime,
-                   e.Type as eventName
-            FROM AttendanceStudent a LEFT JOIN Event e ON a.eventID = e.ID
+                   e.Type      as eventName
+            FROM AttendanceStudent a
+                     LEFT JOIN Event e ON a.eventID = e.ID
             WHERE a.studentID = %s
             ORDER BY a.theDATE DESC, a.theTime DESC
             """,
@@ -281,6 +316,132 @@ class Query:
         # 2. Fetch live check-ins from Redis
         r = get_redis_conn()
         key = get_checkin_key(eventId)
+        checked_in = list(r.smembers(key))
+        checked_in_ids = [int(c) for c in checked_in]
+
+        # 3. Fetch meeting notes from MongoDB
+        db = get_mongo_db()
+        coll = db["meeting_notes"]
+        docs = coll.find({"eventId": eventId}).sort("createdAt", -1)
+        notes_list = [doc.get("content", "") for doc in docs]
+
+        # Combine all data
+        return EventDetailsType(
+            id=event_row["id"],
+            Type=event_row["Type"],
+            Notes=event_row["Notes"],
+            eventTypeid=event_row["eventTypeid"],
+            currentlyCheckedIn=checked_in_ids,
+            liveAttendeeCount=len(checked_in_ids),
+            meetingNotes=notes_list,
+            notesCount=len(notes_list)
+        )
+
+    @strawberry.field
+    def groups(self) -> List[GroupType]:
+        """Get all small groups with their members and leaders"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+
+        # Get all groups
+        cur.execute("SELECT ID as id, name FROM AGroup ORDER BY name")
+        groups = cur.fetchall()
+
+        result = []
+        for group in groups:
+            group_id = group['id']
+
+            # Get members for this group
+            cur.execute("""
+                        SELECT s.ID                                 as id,
+                               s.firstName,
+                               s.lastName,
+                               s.guardianID,
+                               CONCAT(g.firstName, ' ', g.lastName) as guardianName
+                        FROM GroupMember gm
+                                 JOIN Student s ON gm.studentID = s.ID
+                                 LEFT JOIN Guardian g ON s.guardianID = g.ID
+                        WHERE gm.groupID = %s
+                        ORDER BY s.firstName
+                        """, (group_id,))
+            members_data = cur.fetchall()
+            members = [StudentType(**m) for m in members_data]
+
+            # Get leaders for this group
+            cur.execute("""
+                        SELECT l.ID as id, l.firstName, l.lastName
+                        FROM GroupLeader gl
+                                 JOIN Leader l ON gl.leaderID = l.ID
+                        WHERE gl.groupID = %s
+                        ORDER BY l.firstName
+                        """, (group_id,))
+            leaders_data = cur.fetchall()
+            leaders = [LeaderType(**l) for l in leaders_data]
+
+            result.append(GroupType(
+                id=group['id'],
+                name=group['name'],
+                memberCount=len(members),
+                members=members,
+                leaders=leaders
+            ))
+
+        cur.close()
+        conn.close()
+        return result
+
+    @strawberry.field
+    def groupById(self, groupId: int) -> Optional[GroupType]:
+        """Get a single group by ID with members and leaders"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+
+        # Get group
+        cur.execute("SELECT ID as id, name FROM AGroup WHERE ID = %s", (groupId,))
+        group = cur.fetchone()
+
+        if not group:
+            cur.close()
+            conn.close()
+            return None
+
+        # Get members
+        cur.execute("""
+                    SELECT s.ID                                 as id,
+                           s.firstName,
+                           s.lastName,
+                           s.guardianID,
+                           CONCAT(g.firstName, ' ', g.lastName) as guardianName
+                    FROM GroupMember gm
+                             JOIN Student s ON gm.studentID = s.ID
+                             LEFT JOIN Guardian g ON s.guardianID = g.ID
+                    WHERE gm.groupID = %s
+                    ORDER BY s.firstName
+                    """, (groupId,))
+        members_data = cur.fetchall()
+        members = [StudentType(**m) for m in members_data]
+
+        # Get leaders
+        cur.execute("""
+                    SELECT l.ID as id, l.firstName, l.lastName
+                    FROM GroupLeader gl
+                             JOIN Leader l ON gl.leaderID = l.ID
+                    WHERE gl.groupID = %s
+                    ORDER BY l.firstName
+                    """, (groupId,))
+        leaders_data = cur.fetchall()
+        leaders = [LeaderType(**l) for l in leaders_data]
+
+        cur.close()
+        conn.close()
+
+        return GroupType(
+            id=group['id'],
+            name=group['name'],
+            memberCount=len(members),
+            members=members,
+            leaders=leaders
+        )
         checked_in_ids = list(r.smembers(key))
         checked_in_list = [int(sid) for sid in checked_in_ids]
 
@@ -301,6 +462,81 @@ class Query:
             meetingNotes=notes_list,
             notesCount=len(notes_list)
         )
+
+    @strawberry.field
+    def volunteers(self) -> List[VolunteerType]:
+        """Get all volunteers"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT ID as id, firstName, lastName FROM Volunteer ORDER BY firstName")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [VolunteerType(**row) for row in rows]
+
+    @strawberry.field
+    def volunteerById(self, volunteerId: int) -> Optional[VolunteerType]:
+        """Get a single volunteer by ID"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT ID as id, firstName, lastName FROM Volunteer WHERE ID = %s", (volunteerId,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            return VolunteerType(**row)
+        return None
+
+    @strawberry.field
+    def volunteerRecords(self, volunteerId: Optional[int] = None, eventId: Optional[int] = None) -> List[
+        VolunteerRecordType]:
+        """Get volunteer records, optionally filtered by volunteer or event"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+
+        if volunteerId:
+            cur.execute("""
+                        SELECT vr.ID                                as id,
+                               vr.volunteerID                       as volunteerId,
+                               vr.eventID                           as eventId,
+                               CONCAT(v.firstName, ' ', v.lastName) as volunteerName,
+                               e.Type                               as eventName
+                        FROM VolunteerRecord vr
+                                 JOIN Volunteer v ON vr.volunteerID = v.ID
+                                 LEFT JOIN Event e ON vr.eventID = e.ID
+                        WHERE vr.volunteerID = %s
+                        ORDER BY vr.ID DESC
+                        """, (volunteerId,))
+        elif eventId:
+            cur.execute("""
+                        SELECT vr.ID                                as id,
+                               vr.volunteerID                       as volunteerId,
+                               vr.eventID                           as eventId,
+                               CONCAT(v.firstName, ' ', v.lastName) as volunteerName,
+                               e.Type                               as eventName
+                        FROM VolunteerRecord vr
+                                 JOIN Volunteer v ON vr.volunteerID = v.ID
+                                 LEFT JOIN Event e ON vr.eventID = e.ID
+                        WHERE vr.eventID = %s
+                        ORDER BY vr.ID DESC
+                        """, (eventId,))
+        else:
+            cur.execute("""
+                        SELECT vr.ID                                as id,
+                               vr.volunteerID                       as volunteerId,
+                               vr.eventID                           as eventId,
+                               CONCAT(v.firstName, ' ', v.lastName) as volunteerName,
+                               e.Type                               as eventName
+                        FROM VolunteerRecord vr
+                                 JOIN Volunteer v ON vr.volunteerID = v.ID
+                                 LEFT JOIN Event e ON vr.eventID = e.ID
+                        ORDER BY vr.ID DESC
+                        """)
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [VolunteerRecordType(**row) for row in rows]
 
 
 # ---------- Mutation Resolvers (CREATE, UPDATE, DELETE) ----------
@@ -578,6 +814,330 @@ class Mutation:
         r.delete(key)
 
         return PersistAttendanceResult(eventId=eventId, count=count)
+
+    # ==================== SMALL GROUPS CRUD ====================
+
+    @strawberry.mutation
+    def createGroup(self, name: str) -> GroupType:
+        """CREATE a new small group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "INSERT INTO AGroup (name) VALUES (%s)",
+            (name,)
+        )
+        conn.commit()
+        group_id = cur.lastrowid
+        cur.close()
+        conn.close()
+
+        return GroupType(
+            id=group_id,
+            name=name,
+            memberCount=0,
+            members=[],
+            leaders=[]
+        )
+
+    @strawberry.mutation
+    def updateGroup(self, groupId: int, name: str) -> Optional[GroupType]:
+        """UPDATE a group's name"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("UPDATE AGroup SET name = %s WHERE ID = %s", (name, groupId))
+        conn.commit()
+
+        if cur.rowcount == 0:
+            cur.close()
+            conn.close()
+            return None
+
+        # Get updated group with members and leaders
+        cur.execute("SELECT ID as id, name FROM AGroup WHERE ID = %s", (groupId,))
+        group = cur.fetchone()
+
+        # Get members
+        cur.execute("""
+                    SELECT s.ID                                 as id,
+                           s.firstName,
+                           s.lastName,
+                           s.guardianID,
+                           CONCAT(g.firstName, ' ', g.lastName) as guardianName
+                    FROM GroupMember gm
+                             JOIN Student s ON gm.studentID = s.ID
+                             LEFT JOIN Guardian g ON s.guardianID = g.ID
+                    WHERE gm.groupID = %s
+                    """, (groupId,))
+        members_data = cur.fetchall()
+        members = [StudentType(**m) for m in members_data]
+
+        # Get leaders
+        cur.execute("""
+                    SELECT l.ID as id, l.firstName, l.lastName
+                    FROM GroupLeader gl
+                             JOIN Leader l ON gl.leaderID = l.ID
+                    WHERE gl.groupID = %s
+                    """, (groupId,))
+        leaders_data = cur.fetchall()
+        leaders = [LeaderType(**l) for l in leaders_data]
+
+        cur.close()
+        conn.close()
+
+        return GroupType(
+            id=group['id'],
+            name=group['name'],
+            memberCount=len(members),
+            members=members,
+            leaders=leaders
+        )
+
+    @strawberry.mutation
+    def deleteGroup(self, groupId: int) -> SuccessResult:
+        """DELETE a group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        # Delete related records
+        cur.execute("DELETE FROM GroupMember WHERE groupID = %s", (groupId,))
+        cur.execute("DELETE FROM GroupLeader WHERE groupID = %s", (groupId,))
+        cur.execute("DELETE FROM AGroup WHERE ID = %s", (groupId,))
+
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        conn.close()
+
+        return SuccessResult(
+            success=affected > 0,
+            message=f"Group {groupId} deleted successfully" if affected > 0 else "Group not found"
+        )
+
+    @strawberry.mutation
+    def addStudentToGroup(self, groupId: int, studentId: int) -> SuccessResult:
+        """ADD a student to a small group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                "INSERT INTO GroupMember (groupID, studentID) VALUES (%s, %s)",
+                (groupId, studentId)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=True,
+                message=f"Student {studentId} added to group {groupId}"
+            )
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=False,
+                message=f"Error: {str(e)}"
+            )
+
+    @strawberry.mutation
+    def removeStudentFromGroup(self, groupId: int, studentId: int) -> SuccessResult:
+        """REMOVE a student from a small group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        cur.execute(
+            "DELETE FROM GroupMember WHERE groupID = %s AND studentID = %s",
+            (groupId, studentId)
+        )
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        conn.close()
+
+        return SuccessResult(
+            success=affected > 0,
+            message=f"Student {studentId} removed from group {groupId}" if affected > 0 else "Member not found"
+        )
+
+    @strawberry.mutation
+    def addLeaderToGroup(self, groupId: int, leaderId: int) -> SuccessResult:
+        """ADD a leader to a small group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                "INSERT INTO GroupLeader (groupID, leaderID) VALUES (%s, %s)",
+                (groupId, leaderId)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=True,
+                message=f"Leader {leaderId} added to group {groupId}"
+            )
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=False,
+                message=f"Error: {str(e)}"
+            )
+
+    @strawberry.mutation
+    def removeLeaderFromGroup(self, groupId: int, leaderId: int) -> SuccessResult:
+        """REMOVE a leader from a small group"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        cur.execute(
+            "DELETE FROM GroupLeader WHERE groupID = %s AND leaderID = %s",
+            (groupId, leaderId)
+        )
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        conn.close()
+
+        return SuccessResult(
+            success=affected > 0,
+            message=f"Leader {leaderId} removed from group {groupId}" if affected > 0 else "Leader not found"
+        )
+
+    # ==================== VOLUNTEERS CRUD ====================
+
+    @strawberry.mutation
+    def createVolunteer(self, firstName: str, lastName: str) -> VolunteerType:
+        """CREATE a new volunteer"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            "INSERT INTO Volunteer (firstName, lastName) VALUES (%s, %s)",
+            (firstName, lastName)
+        )
+        conn.commit()
+        volunteer_id = cur.lastrowid
+        cur.close()
+        conn.close()
+
+        return VolunteerType(
+            id=volunteer_id,
+            firstName=firstName,
+            lastName=lastName
+        )
+
+    @strawberry.mutation
+    def updateVolunteer(
+            self,
+            volunteerId: int,
+            firstName: Optional[str] = None,
+            lastName: Optional[str] = None
+    ) -> Optional[VolunteerType]:
+        """UPDATE a volunteer's information"""
+        conn = get_mysql_conn()
+        cur = conn.cursor(dictionary=True)
+
+        updates = []
+        params = []
+
+        if firstName is not None:
+            updates.append("firstName = %s")
+            params.append(firstName)
+        if lastName is not None:
+            updates.append("lastName = %s")
+            params.append(lastName)
+
+        if not updates:
+            cur.close()
+            conn.close()
+            return None
+
+        params.append(volunteerId)
+        query = f"UPDATE Volunteer SET {', '.join(updates)} WHERE ID = %s"
+
+        cur.execute(query, params)
+        conn.commit()
+
+        # Fetch updated volunteer
+        cur.execute("SELECT ID as id, firstName, lastName FROM Volunteer WHERE ID = %s", (volunteerId,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if row:
+            return VolunteerType(**row)
+        return None
+
+    @strawberry.mutation
+    def deleteVolunteer(self, volunteerId: int) -> SuccessResult:
+        """DELETE a volunteer"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        # Delete related records
+        cur.execute("DELETE FROM VolunteerRecord WHERE volunteerID = %s", (volunteerId,))
+        cur.execute("DELETE FROM Volunteer WHERE ID = %s", (volunteerId,))
+
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        conn.close()
+
+        return SuccessResult(
+            success=affected > 0,
+            message=f"Volunteer {volunteerId} deleted successfully" if affected > 0 else "Volunteer not found"
+        )
+
+    @strawberry.mutation
+    def addVolunteerToEvent(self, volunteerId: int, eventId: int) -> SuccessResult:
+        """ADD a volunteer to an event"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                "INSERT INTO VolunteerRecord (volunteerID, eventID) VALUES (%s, %s)",
+                (volunteerId, eventId)
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=True,
+                message=f"Volunteer {volunteerId} added to event {eventId}"
+            )
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return SuccessResult(
+                success=False,
+                message=f"Error: {str(e)}"
+            )
+
+    @strawberry.mutation
+    def removeVolunteerFromEvent(self, volunteerId: int, eventId: int) -> SuccessResult:
+        """REMOVE a volunteer from an event"""
+        conn = get_mysql_conn()
+        cur = conn.cursor()
+
+        cur.execute(
+            "DELETE FROM VolunteerRecord WHERE volunteerID = %s AND eventID = %s",
+            (volunteerId, eventId)
+        )
+        conn.commit()
+        affected = cur.rowcount
+        cur.close()
+        conn.close()
+
+        return SuccessResult(
+            success=affected > 0,
+            message=f"Volunteer {volunteerId} removed from event {eventId}" if affected > 0 else "Record not found"
+        )
 
 
 schema = strawberry.Schema(query=Query, mutation=Mutation)

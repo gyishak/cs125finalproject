@@ -1,4 +1,4 @@
-const GRAPHQL_URL = "http://127.0.0.1:8000/graphql";
+const GRAPHQL_URL = "http://localhost:8000/graphql";
 
 // ============================================================
 // GraphQL Request Helper

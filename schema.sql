@@ -46,7 +46,7 @@ CREATE TABLE Student(
     FOREIGN KEY (guardianID) REFERENCES Guardian(ID)
 );
 
--- ✅ FIXED: Removed redundant firstName/lastName
+
 CREATE TABLE GroupMember(
     ID INT AUTO_INCREMENT PRIMARY KEY,
     groupID INT,

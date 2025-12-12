@@ -98,12 +98,14 @@ def get_all_students():
 
         cursor.execute("""
             SELECT
-                id,
-                guardianID,
-                firstName,
-                lastName
-            FROM Student
-            ORDER BY id
+                s.ID as id,
+                s.guardianID,
+                s.firstName,
+                s.lastName,
+                CONCAT(g.firstName, ' ', g.lastName) as guardianName
+            FROM Student s
+            LEFT JOIN Guardian g ON s.guardianID = g.ID
+            ORDER BY s.id
         """)
         students = cursor.fetchall()
         return students
@@ -207,45 +209,39 @@ def check_in_student(check: CheckInEvent):
         if "cnx" in locals() and cnx.is_connected(): cnx.close()
 
 
-@app.get("/debug/redis/{event_id}")
-def debug_redis(event_id: int):
-    """Debug helper to see redis set contents."""
-    r = get_redis_conn()
-    key = f"event:{event_id}:checkins"
-    return {"members": list(r.smembers(key))}
-
 @app.get("/")
 @app.get("/leader-login.html")
 def login_page():
-    return FileResponse("/app/frontend/leader-login.html")
+    return FileResponse("frontend/leader-login.html")
 
 @app.get("/index.html")
 def index_page():
-    return FileResponse("/app/frontend/index.html")
+    return FileResponse("frontend/index.html")
 
 @app.get("/student.html")
 def student_page():
-    return FileResponse("/app/frontend/student.html")
+    return FileResponse("frontend/student.html")
 
 @app.get("/styles.css")
 def styles():
-    return FileResponse("/app/frontend/styles.css")
+    return FileResponse("frontend/styles.css")
 
 @app.get("/app.js")
 def app_js():
-    return FileResponse("/app/frontend/app.js")
+    return FileResponse("frontend/app.js")
 
 @app.get("/student.js")
 def student_js():
-    return FileResponse("/app/frontend/student.js")
+    return FileResponse("frontend/student.js")
 
 @app.get("/leader-login.js")
 def leader_login_js():
-    return FileResponse("/app/frontend/leader-login.js")
+    return FileResponse("frontend/leader-login.js")
 # ------------------------------------------------------------------------------
 # RUN APP
 # ------------------------------------------------------------------------------
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, reload=True)
+    uvicorn.run("app:app", reload=True, host="0.0.0.0", port=8000)
