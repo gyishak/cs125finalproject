@@ -53,7 +53,7 @@ CREATE TABLE GroupMember(
     studentID INT,
     FOREIGN KEY (groupID) REFERENCES AGroup(ID),
     FOREIGN KEY (studentID) REFERENCES Student(ID),
-    UNIQUE KEY unique_group_student (groupID, studentID)
+    UNIQUE (groupID, studentID)
 );
 
 CREATE TABLE EventLeader(
@@ -87,7 +87,7 @@ CREATE TABLE GroupLeader(
     leaderID INT,
     FOREIGN KEY (groupID) REFERENCES AGroup(ID),
     FOREIGN KEY (leaderID) REFERENCES Leader(ID),
-    UNIQUE KEY unique_group_leader (groupID, leaderID)
+    UNIQUE (groupID, leaderID)
 );
 
 CREATE TABLE AttendanceStudent(
