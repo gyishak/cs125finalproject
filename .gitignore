@@ -4,3 +4,4 @@ __pycache__/
 secrets/
 secrets_backup/
 
+replacements.txt
