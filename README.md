@@ -13,14 +13,25 @@ Mike Ryu
                                   4. Record notes about what happened in a particular meeting or small group<br>
                                   5. See who is currently checked in to an event in “real time”<br><br>
 **What is your team name?**:<br><br> Our team name is Serkan&Grace. Our team includes Serkan Durna and Grace Yishak. <br><br>
+**How to use**: <br><br>
+Users start on the login page, where they can log in as a leader or a student/parent. If they are a leader, they must log in with their leader ID, and if they are a student/parent, they must log in with their student ID. <br>
+**Leaders**:
+Once they enter their ID… <br>
+Leaders are able to see all events, make events, edit events, delete events, end events, and acquire data on events. <br>
+Leaders are also able to access all students' information (this includes their Guardian information as well as attendance history), add students, edit student information, and delete students.<br>
+Leaders also have the ability to create small groups. Within these small groups, they are allowed to assign leaders to each group, add members, and rename/delete groups.<br>
+Lastly, leaders can also add volunteers! Upon adding volunteers, they can sign volunteers up for events as well as edit volunteer information, and delete volunteers.<br>
+**Students/Parent**:
+Once they enter their child’s ID… <br>
+Students/Parents are able to access information about the student, access their attendance history, as well as view upcoming events!<br>
 
 **How to run?**<br><br> 
-                                        1. **Pull the image with command:** <br> docker pull gyishak/youth-group-app:latest <br>
-                                        2. **Run the container:** <br>
+                                        1. **Pull the image with command**: <br> docker pull gyishak/youth-group-app:latest <br>
+                                        2. **Run the container**: <br>
                                            docker run -p 8000:8000 --link mysql-cs125:mysql --link mongodb:mongo --link redis:redis -e 
                                            DB_HOST=mysql -e DB_PORT=3306 -e DB_USER=root -e DB_PASSWORD=cs125 -e 
                                            DB_NAME=youth_db gyishak/youth-group-app:latest <br>
-                                        3. **Open Link:** <br> http://localhost:8000/ <br>
+                                        3. **Open Link**: <br> http://localhost:8000/ <br>
                                         4. **Enjoy!** <br>
 
      
