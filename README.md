@@ -1,4 +1,4 @@
-# ***REMOVED***finalproject
+# Youth Group Management System-Database Design Final Project
 Serkan Durna & Grace Yishak <br>
 CS 125<br>
 Mike Ryu
