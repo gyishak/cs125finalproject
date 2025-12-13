@@ -15,13 +15,13 @@ Mike Ryu
 **What is your team name?**:<br><br> Our team name is Serkan&Grace. Our team includes Serkan Durna and Grace Yishak. <br><br>
 **How to use**: <br><br>
 Users start on the login page, where they can log in as a leader or a student/parent. If they are a leader, they must log in with their leader ID, and if they are a student/parent, they must log in with their student ID. <br><br>
-**Leaders**:
+**Leaders**: <br>
 Once they enter their ID… <br>
 Leaders are able to see all events, make events, edit events, delete events, end events, and acquire data on events. <br>
 Leaders are also able to access all students' information (this includes their Guardian information as well as attendance history), add students, edit student information, and delete students.<br>
 Leaders also have the ability to create small groups. Within these small groups, they are allowed to assign leaders to each group, add members, and rename/delete groups.<br>
 Lastly, leaders can also add volunteers! Upon adding volunteers, they can sign volunteers up for events as well as edit volunteer information, and delete volunteers.<br><br>
-**Students/Parent**:
+**Students/Parent**: <br>
 Once they enter their child’s ID… <br>
 Students/Parents are able to access information about the student, access their attendance history, as well as view upcoming events!<br><br>
 
