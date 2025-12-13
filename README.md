@@ -14,10 +14,13 @@ Mike Ryu
                                   5. See who is currently checked in to an event in “real time”<br><br>
 **What is your team name?**:<br><br> Our team name is Serkan&Grace. Our team includes Serkan Durna and Grace Yishak. <br><br>
 
-**How to spin up our server?**:<br><br> Run Commands: <br><br>
-                                        1. docker start mysql-***REMOVED*** <br>
-                                        2. docker exec -i mysql-***REMOVED*** mysql -u root -p***REMOVED*** < schema.sql <br>
-                                        3. docker exec -i mysql-***REMOVED*** mysql -u root -p***REMOVED*** < data.sql <br>
-                                        4. python app.py <br>
+**How to run?**<br><br>  <br><br>
+                                        1. Pull the image with command: docker pull gyishak/youth-group-app:latest <br>
+                                        2. Run the container: <br>
+                                           docker run -p 8000:8000 --link mysql-cs125:mysql --link mongodb:mongo --link redis:redis -e 
+                                           DB_HOST=mysql -e DB_PORT=3306 -e DB_USER=root -e DB_PASSWORD=cs125 -e 
+                                           DB_NAME=youth_db gyishak/youth-group-app:latest <br>
+                                        3.Open Link: http://localhost:8000/ <br>
+                                        4. Enjoy!<br>
 
      
