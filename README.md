@@ -15,12 +15,12 @@ Mike Ryu
 **What is your team name?**:<br><br> Our team name is Serkan&Grace. Our team includes Serkan Durna and Grace Yishak. <br><br>
 
 **How to run?**<br><br> 
-                                        1. **Pull the image with command:** docker pull gyishak/youth-group-app:latest <br>
+                                        1. **Pull the image with command:** <br> docker pull gyishak/youth-group-app:latest <br>
                                         2. **Run the container:** <br>
                                            docker run -p 8000:8000 --link mysql-cs125:mysql --link mongodb:mongo --link redis:redis -e 
                                            DB_HOST=mysql -e DB_PORT=3306 -e DB_USER=root -e DB_PASSWORD=cs125 -e 
                                            DB_NAME=youth_db gyishak/youth-group-app:latest <br>
-                                        3. **Open Link:** http://localhost:8000/ <br>
+                                        3. **Open Link:** <br> http://localhost:8000/ <br>
                                         4. **Enjoy!** <br>
 
      
